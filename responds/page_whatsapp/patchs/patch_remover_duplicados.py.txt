@@ -1,0 +1,213 @@
+# ======================================================================
+# PATCH: botão "Remover Arquivos Duplicados"  (somente MVC page_whatsapp)
+# Novo arquivo: responds/page_whatsapp/dedup_folder.py
+# ======================================================================
+
+
+# ----------------------------------------------------------------------
+# 1) model_whatsapp.py
+# ----------------------------------------------------------------------
+
+# (a) imports no topo (junto dos outros)
+from responds.page_whatsapp.dedup_folder import (
+    STATUS_FAILED,
+    STATUS_REMOVED,
+    DuplicateFolderService,
+    DuplicatePlan,
+    RemovalRecord,
+)
+
+# (b) dentro de ModelWhatsApp, logo abaixo de _start_job:
+
+    def _start_thread[R](
+        self,
+        name: str,
+        work: Callable[[], R],
+        on_done: Callable[[R | None, Exception | None], None],
+    ) -> None:
+        """Como _start_job, mas devolve qualquer tipo (não só TaskResult)."""
+        if self.is_working():
+            raise RuntimeError("Já existe uma tarefa em andamento")
+
+        def run() -> None:
+            res: R | None = None
+            err: Exception | None = None
+            try:
+                res = work()
+            except Exception as e:
+                err = e
+            finally:
+                on_done(res, err)
+
+        self._job_thread = threading.Thread(target=run, daemon=True, name=name)
+        self._job_thread.start()
+
+# (c) dentro de ModelWhatsApp, nova seção (ex.: depois de start_rename_cartas):
+
+    # ------------------------------------------------------------------ III) duplicados por pasta
+    def start_scan_duplicates(
+        self,
+        folder: Directory,
+        on_done: Callable[[DuplicatePlan | None, Exception | None], None],
+    ) -> None:
+        """Fase 1: só analisa (hash por pasta). Não altera nenhum arquivo."""
+        self._start_thread(
+            "wp-dup-scan", lambda: DuplicateFolderService().scan(folder), on_done
+        )
+
+    def execute_duplicates(self, plan: DuplicatePlan) -> TaskResult:
+        """Fase 2: apaga as duplicadas do plano e grava o log em Excel."""
+        svc = DuplicateFolderService()
+        records: list[RemovalRecord] = svc.execute(plan)
+        log = svc.write_log(records, self.work_dir().concat("LogsDuplicados", True))
+
+        removed: int = sum(1 for r in records if r.status == STATUS_REMOVED)
+        failed: int = sum(1 for r in records if r.status == STATUS_FAILED)
+        skipped: int = len(records) - removed - failed
+
+        view = pd.DataFrame(
+            {
+                "ARQUIVO": [os.path.basename(r.path) for r in records],
+                "CLASSIFICAÇÃO": ["duplicada"] * len(records),
+                "STATUS": [r.status for r in records],
+                "DESTINO": [r.kept for r in records],  # arquivo que foi mantido
+                "MENSAGEM": [r.message for r in records],
+            }
+        )[TASK_COLUMNS]
+
+        msg = (
+            f"Duplicadas removidas: {removed} | falhas: {failed} | ignoradas: {skipped}\n"
+            f"Pasta: {plan.root}\n"
+            f"Log: {log.absolute()}"
+        )
+        return TaskResult("Remover duplicados", msg, view)
+
+    def start_execute_duplicates(
+        self,
+        plan: DuplicatePlan,
+        on_done: Callable[[TaskResult | None, Exception | None], None],
+    ) -> None:
+        # on_done da fase 1 roda dentro da thread anterior: espera ela terminar.
+        t = self._job_thread
+        if t is not None and t.is_alive():
+            t.join(timeout=2.0)
+        self._start_job("wp-dup-remove", lambda: self.execute_duplicates(plan), on_done)
+
+
+# ----------------------------------------------------------------------
+# 2) controller_whatsapp.py
+# ----------------------------------------------------------------------
+
+# (a) imports: acrescentar
+from responds.page_whatsapp.dedup_folder import DuplicatePlan
+
+# (b) em __init__, junto de fn_show_error / fn_show_info:
+        self.fn_confirm: Callable[[str], bool] | None = None
+
+# (c) novos métodos (ex.: antes de run_chat_command):
+
+    def remove_duplicates_folder(self, folder: Directory) -> None:
+        """
+        III) Duplicados por pasta, em 2 fases:
+          1. analisa (hash) e mostra o que SERIA apagado;
+          2. só apaga se o usuário confirmar.
+        """
+        if self.busy:
+            self.show_info("Existe outra operação em andamento.")
+            return
+        if not folder.exists():
+            self.show_error(f"A pasta não existe:\n{folder.absolute()}")
+            return
+
+        self._begin_task(
+            "Última operação: remover duplicados",
+            f"Analisando duplicados em {folder.absolute()} (incluindo subpastas) ...",
+        )
+        try:
+            self.model.start_scan_duplicates(
+                folder, lambda p, e: _ui(lambda: self._on_scan_duplicates(p, e))
+            )
+        except Exception as e:
+            self.working = False
+            self.show_error(str(e))
+
+    def _on_scan_duplicates(self, plan: DuplicatePlan | None, err: Exception | None) -> None:
+        self.working = False
+
+        if err is not None or plan is None:
+            self.status_text = f"Erro: {err}"
+            self.notify_listeners()
+            self.show_error(f"Falha ao analisar duplicados:\n{err}")
+            return
+
+        if plan.total_remove == 0:
+            self.status_text = f"Nenhum duplicado encontrado ({plan.scanned} arquivos analisados)."
+            self.notify_listeners()
+            msg = self.status_text
+            if plan.errors:
+                msg += f"\n\n{len(plan.errors)} arquivo(s) não puderam ser lidos."
+            self.show_info(msg)
+            return
+
+        mb: float = plan.bytes_to_free / (1024 * 1024)
+        question = (
+            f"Pasta: {plan.root}\n\n"
+            f"{plan.scanned} arquivos analisados.\n"
+            f"{len(plan.groups)} grupo(s) de duplicados (mesmo conteúdo na MESMA pasta).\n"
+            f"{plan.total_remove} arquivo(s) serão APAGADOS ({mb:.1f} MB), "
+            "mantendo 1 de cada grupo.\n\n"
+            "A exclusão é PERMANENTE (não vai para a lixeira) e será registrada "
+            "em um log Excel.\n\nApagar agora?"
+        )
+        confirmed: bool = self.fn_confirm(question) if self.fn_confirm is not None else False
+        if not confirmed:
+            self.status_text = "Remoção de duplicados cancelada."
+            self.notify_listeners()
+            return
+
+        self.working = True
+        self.status_text = f"Apagando {plan.total_remove} duplicado(s) ..."
+        self.notify_listeners()
+        try:
+            self.model.start_execute_duplicates(
+                plan, lambda r, e: _ui(lambda: self._on_task_done(r, e))
+            )
+        except Exception as e:
+            self.working = False
+            self.show_error(str(e))
+
+
+# ----------------------------------------------------------------------
+# 3) view_whatsapp.py
+# ----------------------------------------------------------------------
+
+# (a) em _PageWhatsAppState.__init__, junto de ctrl.fn_show_info = ...:
+        ctrl.fn_confirm = self.confirm
+
+# (b) novos métodos (ex.: depois de show_info):
+
+    def confirm(self, msg: str) -> bool:
+        return messagebox.askyesno("Remover arquivos duplicados", msg)
+
+    def action_remove_duplicates(self, ctrl: ControllerWhatsAppPage) -> None:
+        if ctrl.busy:
+            self.show_info("Existe outra operação em andamento.")
+            return
+
+        conf = ctrl.get_config()
+        if conf.value.initial_dir.exists():
+            self.picker_cartas_dir.initial_directory = conf.value.initial_dir.absolute()
+
+        path = self.picker_cartas_dir.pick_directory()
+        if not path:
+            return
+
+        folder = Directory(path)
+        conf.set_initial_dir(folder)
+        ctrl.remove_duplicates_folder(folder)
+
+# (c) em build_body, na Row "Cartas TOI:", depois do botão "Importar e renomear cartas":
+                        ElevatedButton(
+                            "Remover Arquivos Duplicados",
+                            lambda: self.action_remove_duplicates(ctrl),
+                        ),

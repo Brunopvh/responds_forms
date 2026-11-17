@@ -1,0 +1,98 @@
+# Substitua o método ModelWhatsApp.rename_cartas em responds/page_whatsapp/model_whatsapp.py
+# (o resto do arquivo não muda). Coloque dedup_cartas.py na mesma pasta.
+
+    def rename_cartas(self, files: list[File]) -> TaskResult:
+        """
+        Identifica e organiza cartas TOI SEM criar duplicadas ('-1', '-2' ...):
+          1) índice hash->arquivo (Excel) da pasta de cartas, atualizado de forma incremental;
+          2) cartas cujo hash já existe (ou repetidas no lote) NÃO são movidas;
+          3) destino já existente nunca é sobrescrito nem ganha sufixo.
+        """
+        # lazy: cartas inicializa OCR/config
+        from responds.page_whatsapp.dedup_cartas import (
+            STATUS_DUPLICATE,
+            CartasHashIndex,
+            DedupResult,
+            RenameCartasSemDuplicatas,
+            split_duplicates,
+        )
+
+        valid: list[File] = [
+            f
+            for f in files
+            if f.is_pdf()
+            or f.is_image()
+            or (f.extension() or "").lower() in CARTA_EXTENSIONS
+        ]
+        if not valid:
+            raise ValueError("Selecione cartas em PDF ou imagem.")
+
+        index: CartasHashIndex = CartasHashIndex.create_default(self.dir_cartas())
+        index.refresh()
+        dedup: DedupResult = split_duplicates(valid, index)
+
+        columns: list[str] = ["src", "dest", "status", "exception"]
+        df_moves: pd.DataFrame = pd.DataFrame(columns=columns)
+        if dedup.unique:
+            rn = RenameCartasSemDuplicatas(Set(dedup.unique), modo_v2=True)
+            rn.execute()
+            rn.process_error_ucs()
+            df_moves = rn.table_status.to_dataframe().astype(str)
+            for c in columns:
+                if c not in df_moves.columns:
+                    df_moves[c] = ""
+            df_moves = df_moves[columns]
+            index.refresh()  # registra o que acabou de ser movido
+
+        df_dup: pd.DataFrame = pd.DataFrame(
+            [
+                {
+                    "src": d.src,
+                    "dest": d.existing,
+                    "status": STATUS_DUPLICATE,
+                    "exception": d.reason,
+                }
+                for d in dedup.duplicates
+            ],
+            columns=columns,
+        )
+        df: pd.DataFrame = pd.concat([df_moves, df_dup], ignore_index=True).astype(str)
+
+        if df.empty:
+            return TaskResult("Cartas TOI", "Nenhum arquivo processado.", None)
+
+        ok = df["status"] == "SUCESSO"
+        dup = df["status"] == STATUS_DUPLICATE
+        failed = ~ok & ~dup
+
+        categorias = df["dest"].map(_categoria)
+        categorias = categorias.where(~dup, "duplicada")
+
+        view = pd.DataFrame(
+            {
+                "ARQUIVO": df["src"].map(os.path.basename),
+                "CLASSIFICAÇÃO": categorias,
+                "STATUS": df["status"],
+                "DESTINO": df["dest"],
+                "MENSAGEM": df["exception"],
+            }
+        )[TASK_COLUMNS]
+
+        resumo = categorias[ok].value_counts()
+        linhas: list[str] = [
+            f"{len(df)} arquivos | movidos: {int(ok.sum())} | "
+            f"duplicadas (não movidas): {int(dup.sum())} | falhas: {int(failed.sum())}"
+        ]
+        for label in ("completa", "só UC", "só TOI", "sem data", "sem UC/TOI"):
+            if label in resumo:
+                linhas.append(f"  • {label}: {int(resumo[label])}")
+        linhas.append(f"\nPasta: {self.dir_cartas().absolute()}")
+        if dup.any():
+            linhas.append(
+                "Duplicadas permanecem na pasta de origem (nada é apagado); "
+                "a coluna DESTINO mostra o arquivo que já existia."
+            )
+        if failed.any():
+            linhas.append("Veja a tabela de log para os arquivos com falha.")
+
+        return TaskResult("Cartas TOI", "\n".join(linhas), view)

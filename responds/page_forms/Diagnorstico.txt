@@ -1,0 +1,108 @@
+uv run python -m converter.page_forms.diagnose_forms
+Aguardando o formulário (faça login no navegador se pedir)...
+
+7 blocos encontrados em [data-automation-id='questionItem']
+
+[
+  {
+    "i": 0,
+    "innerText": "1. UC",
+    "textContent": "1.UCTexto de linha única. ",
+    "automation_ids": [
+      "questionTitle",
+      "questionOrdinal",
+      "requiredStar",
+      "textInput"
+    ],
+    "controls": [
+      "input | type=null | role=null | aria-label=Texto de linha única | placeholder=O valor deve ser um número | auto=textInput | name=null"
+    ]
+  },
+  {
+    "i": 1,
+    "innerText": "2. TOI",
+    "textContent": "2.TOITexto de linha única. ",
+    "automation_ids": [
+      "questionTitle",
+      "questionOrdinal",
+      "requiredStar",
+      "textInput"
+    ],
+    "controls": [
+      "input | type=null | role=null | aria-label=Texto de linha única | placeholder=Insira sua resposta | auto=textInput | name=null"
+    ]
+  },
+  {
+    "i": 2,
+    "innerText": "3. NÚMERO DO MEDIDOR",
+    "textContent": "3.NÚMERO DO MEDIDORTexto de linha única. ",
+    "automation_ids": [
+      "questionTitle",
+      "questionOrdinal",
+      "textInput"
+    ],
+    "controls": [
+      "input | type=null | role=null | aria-label=Texto de linha única | placeholder=Insira sua resposta | auto=textInput | name=null"
+    ]
+  },
+  {
+    "i": 3,
+    "innerText": "4. LOCAL DA ENTREGA CAIXA DE CORREIOS PORTA/PORTÃO ENTREGUE EM MÃOS OUTRO LOCAL DE ENTREGA",
+    "textContent": "4.LOCAL DA ENTREGAOpção única. CAIXA DE CORREIOSPORTA/PORTÃOENTREGUE EM MÃOSOUTRO LOCAL DE ENTREGA",
+    "automation_ids": [
+      "questionTitle",
+      "questionOrdinal",
+      "requiredStar",
+      "choiceItem",
+      "radio"
+    ],
+    "controls": [
+      "input | type=radio | role=radio | aria-label=null | placeholder=null | auto=null | name=r90e44250624a44eba847ada3017d68f3",
+      "input | type=radio | role=radio | aria-label=null | placeholder=null | auto=null | name=r90e44250624a44eba847ada3017d68f3",
+      "input | type=radio | role=radio | aria-label=null | placeholder=null | auto=null | name=r90e44250624a44eba847ada3017d68f3",
+      "input | type=radio | role=radio | aria-label=null | placeholder=null | auto=null | name=r90e44250624a44eba847ada3017d68f3"
+    ]
+  },
+  {
+    "i": 4,
+    "innerText": "5. TIPO DE DOCUMENTO Selecionar sua resposta",
+    "textContent": "5.TIPO DE DOCUMENTOOpção única. Selecionar sua resposta",
+    "automation_ids": [
+      "questionTitle",
+      "questionOrdinal",
+      "requiredStar"
+    ],
+    "controls": [
+      "div | type=null | role=button | aria-label=null | placeholder=null | auto=null | name=null"
+    ]
+  },
+  {
+    "i": 5,
+    "innerText": "6. FOTOS (ENVIAR NO MINIMO DUAS FOTOS, SENDO UMA FOTO DO PROTOCOLO E UMA FOTO DA EVIDÊNCIA DO DOCUMENTO DEIXADO NO LOCAL) (Pergunta não anônima ) Carregar arqui",
+    "textContent": "6.FOTOS (ENVIAR NO MINIMO DUAS FOTOS, SENDO UMA FOTO DO PROTOCOLO E UMA FOTO DA EVIDÊNCIA DO DOCUMENTO DEIXADO NO LOCAL) (Pergunta não anônima)Carregar Arquivo.",
+    "automation_ids": [
+      "questionTitle",
+      "questionOrdinal",
+      "requiredStar",
+      "fileUploadButton"
+    ],
+    "controls": [
+      "button | type=null | role=null | aria-label=Carregar arquivo Limite de número de arquivos: 6 Limite de tamanho de arquivo único: 1GB Tipos de arquivo permitidos: Word, Excel, PPT, PDF, Imagem, Vídeo, Áudio | placeholder=null | auto=fileUploadButton | name=null",
+      "input | type=file | role=null | aria-label=null | placeholder=null | auto=null | name=null"
+    ]
+  },
+  {
+    "i": 6,
+    "innerText": "7. DATA DA ENTREGA ",
+    "textContent": "7.DATA DA ENTREGAData. ",
+    "automation_ids": [
+      "questionTitle",
+      "questionOrdinal",
+      "requiredStar",
+      "dateContainer"
+    ],
+    "controls": [
+      "input | type=text | role=combobox | aria-label=Seletor de data | placeholder=Insira a data (dd/MM/yyyy) | auto=null | name=null"
+    ]
+  }
+]
