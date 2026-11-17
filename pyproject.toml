@@ -1,6 +1,6 @@
 [project]
 name = "responds_forms"
-version = "0.4.6"
+version = "0.4.7"
 description = "Lançar cartas no FORMS"
 readme = "README.md"
 requires-python = ">=3.12"

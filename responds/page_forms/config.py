@@ -49,7 +49,7 @@ class FormsConfig:
     headless: bool = False
     slow_mo_ms: int = 150  # pausa automática entre CADA ação do Playwright
     pause_between_rows_s: float = 1.5  # pausa entre uma carta e outra
-    browser_channel: str | None = "edge"  # ex.: "chrome" para usar o Chrome instalado
+    browser_channel: str | None = "msedge"  # ex.: "chrome" para usar o Chrome instalado
 
     login_timeout_s: int = 900
     action_timeout_ms: int = 15000
